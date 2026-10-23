@@ -34,6 +34,20 @@ SELECT vpa, balance, version FROM accounts;
 mvn test
 ```
 
+## Deploy (Render backend + Vercel frontend)
+
+Vercel can't run a JVM, so the Spring Boot API runs on Render and Vercel serves the dashboard,
+proxying `/api/*` to Render (`vercel.json`), so the browser sees one origin and no CORS is needed.
+
+1. Push this repo to GitHub.
+2. **Render** → New → Blueprint → pick the repo. `render.yaml` builds the `Dockerfile` on the free plan
+   with the `prod` profile (H2 console disabled).
+3. If Render's URL isn't `https://upi-offline-mesh.onrender.com`, update the rewrite in `vercel.json`.
+4. **Vercel** → Add New → Project → import the repo → Framework preset "Other" → Deploy.
+
+The free Render service sleeps when idle; the first request after that takes ~50s while it wakes up,
+and the dashboard says so while it retries.
+
 ## The three challenges and how they're solved
 
 | Problem | Solution | Where |
