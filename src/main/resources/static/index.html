@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Offline UPI Mesh</title>
+<script type="importmap">
+  { "imports": { "motion": "https://cdn.jsdelivr.net/npm/motion@12.43.0/+esm" } }
+</script>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #1b1f24; --muted: #5f6b7a; --line: #dde2e8;
+    --accent: #3b5bdb; --ok: #2b8a3e; --ok-bg: #e6f4ea; --warn: #b35c00; --warn-bg: #fff1e0;
+    --bad: #c92a2a; --bad-bg: #fde8e8; --node-off: #868e96; --node-on: #2b8a3e; --bank: #1c3d8f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111418; --panel: #1a1e24; --ink: #e8ebef; --muted: #98a2b0; --line: #2c333c;
+      --accent: #7b93f5; --ok: #69db7c; --ok-bg: #16301e; --warn: #ffa94d; --warn-bg: #33240f;
+      --bad: #ff8787; --bad-bg: #3a1a1a; --node-off: #6c757d; --node-on: #51cf66; --bank: #4263eb;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 18px 20px 6px; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; color: var(--muted); max-width: 80ch; }
+  main { display: grid; grid-template-columns: 320px 1fr; gap: 16px; padding: 16px 20px 28px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 12px 16px; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .panel h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
+  input, select { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px;
+                  background: var(--bg); color: var(--ink); font: inherit; }
+  button { font: inherit; padding: 7px 12px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--bg); color: var(--ink); cursor: pointer; transition: border-color .15s, opacity .15s; }
+  button:hover { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: progress; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .accounts > div { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; margin: 0 -8px;
+                    border-bottom: 1px solid var(--line); border-radius: 6px; }
+  .accounts > div:last-child { border-bottom: 0; }
+  .accounts b { font-variant-numeric: tabular-nums; }
+  .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; word-break: break-all; }
+  svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .node { cursor: pointer; }
+  .node circle.body { transition: fill .3s; }
+  .node:hover circle.body { stroke: var(--accent); stroke-width: 3; }
+  .node-label { font-size: 13px; fill: var(--ink); text-anchor: middle; }
+  .node-sub { font-size: 11px; fill: var(--muted); text-anchor: middle; }
+  .edge { stroke: var(--line); stroke-width: 2; stroke-dasharray: 5 4; transition: stroke .3s; }
+  .edge.hot { stroke: var(--accent); }
+  .uplink { stroke: var(--node-on); stroke-width: 1.5; stroke-dasharray: 2 6; opacity: 0; transition: opacity .3s; }
+  .uplink.on { opacity: .55; }
+  .pulse { transform-box: fill-box; transform-origin: center; }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .table-wrap { overflow-x: auto; }
+  .pill { display: inline-block; padding: 1px 7px; border-radius: 99px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .pill.SETTLED { background: var(--ok-bg); color: var(--ok); }
+  .pill.DUPLICATE_DROPPED { background: var(--warn-bg); color: var(--warn); }
+  .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .log { max-height: 260px; overflow-y: auto; font-size: 12.5px; }
+  .log div { padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .log b { display: inline-block; min-width: 82px; color: var(--muted); font-weight: 600; font-size: 11px; }
+  .cipher { margin-top: 10px; padding: 8px; border-radius: 6px; background: var(--bg); border: 1px dashed var(--line); }
+  .toast { margin-top: 8px; font-size: 12.5px; min-height: 18px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Offline UPI over a Bluetooth mesh</h1>
+  <p>The sender has no internet. The payment is sealed for the bank, gossiped phone to phone, and
+     uploaded by whichever phones have mobile data. Encryption hides it, idempotency stops double debits,
+     and a signed timestamp stops replays.</p>
+</header>
+<main>
+  <div class="stack">
+    <section class="panel">
+      <h2>1 · Send (offline)</h2>
+      <form id="send">
+        <label>From phone</label>
+        <select name="deviceId" id="deviceSel"></select>
+        <label>Sender VPA</label>
+        <select name="senderVpa" id="senderSel"></select>
+        <label>Receiver VPA</label>
+        <select name="receiverVpa" id="receiverSel"></select>
+        <label>Amount (₹)</label>
+        <input name="amount" type="number" min="1" step="1" value="100" required>
+        <label>UPI PIN</label>
+        <input name="pin" type="password" inputmode="numeric" value="1234" required>
+        <div class="hint">Demo PINs: pratyush 1234 · mohan 4321 · sunita 1111</div>
+        <div class="row" style="margin-top:10px"><button class="primary" type="submit">Seal &amp; broadcast</button></div>
+      </form>
+      <div id="cipher" class="cipher" hidden>
+        <div class="hint" style="margin:0 0 4px">What Manoj, Sunita and Ajay can see:</div>
+        <div class="mono" id="cipherText"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>2 · Move it</h2>
+      <div class="row">
+        <button id="gossip">Gossip round</button>
+        <button id="flush" class="primary">Bridges upload to bank</button>
+      </div>
+      <div class="hint">Click a phone in the mesh to toggle its mobile data.</div>
+      <div class="toast" id="toast"></div>
+    </section>
+
+    <section class="panel">
+      <h2>3 · Attack it</h2>
+      <div class="row">
+        <button id="tamper">Tamper (flip 1 bit)</button>
+        <button id="replay">Replay last packet</button>
+        <button id="expired">Upload 25h-old packet</button>
+      </div>
+      <div class="row" style="margin-top:12px"><button id="reset">Reset everything</button></div>
+    </section>
+
+    <section class="panel">
+      <h2>Bank balances</h2>
+      <div class="accounts" id="accounts"></div>
+      <div class="hint" id="idem"></div>
+    </section>
+  </div>
+
+  <div class="stack">
+    <section class="panel">
+      <h2>Mesh</h2>
+      <svg id="mesh" viewBox="0 -100 790 500" role="img" aria-label="Mesh of phones and the bank">
+        <g id="edges"></g>
+        <g id="nodes"></g>
+        <g id="bank" class="pulse">
+          <rect x="335" y="-92" width="120" height="52" rx="10" fill="var(--bank)"/>
+          <text x="395" y="-70" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">Bank server</text>
+          <text x="395" y="-52" text-anchor="middle" fill="#fff" font-size="11" opacity=".8">verifies · settles once</text>
+        </g>
+        <g id="fx"></g>
+      </svg>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--node-on)"></span>Has internet (bridge)</span>
+        <span><span class="dot" style="background:var(--node-off)"></span>Offline</span>
+        <span>Dashed line = in Bluetooth range · badge = packets carried</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Bank ledger</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Time</th><th>Packet</th><th>Via</th><th>Payment</th><th>Outcome</th></tr></thead>
+          <tbody id="ledger"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Event log</h2>
+      <div class="log" id="log"></div>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { animate, press, stagger } from "motion"
+
+const $ = (id) => document.getElementById(id)
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const time = (iso) => new Date(iso).toLocaleTimeString()
+const SVG = 'http://www.w3.org/2000/svg'
+const BANK = { x: 395, y: -40 }
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+const dur = (s) => reduced ? 0 : s
+const sleep = (ms) => new Promise(r => setTimeout(r, reduced ? 0 : ms))
+const fmt = (n) => '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+const OUTCOME_COLOR = {
+  SETTLED: 'var(--ok)', DUPLICATE_DROPPED: 'var(--warn)', REJECTED_EXPIRED: 'var(--node-off)'
+}
+const outcomeColor = (o) => OUTCOME_COLOR[o] || 'var(--bad)'
+const shortOutcome = (o) => ({ SETTLED: 'settled ✓', DUPLICATE_DROPPED: 'duplicate' }[o] || o.replace('REJECTED_', '').toLowerCase())
+
+let state = null
+let busy = false
+let built = false
+const balances = new Map()
+const seenLedger = new Set()
+
+async function api(path, opts = {}) {
+  const res = await fetch('/api' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, ...opts })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || res.statusText)
+  return body
+}
+
+function toast(msg, isError) {
+  const t = $('toast')
+  t.textContent = msg
+  t.style.color = isError ? 'var(--bad)' : 'var(--muted)'
+  animate(t, { opacity: [0, 1], y: [4, 0] }, { duration: dur(0.2) })
+}
+
+function el(tag, attrs, parent) {
+  const n = document.createElementNS(SVG, tag)
+  for (const k in attrs) n.setAttribute(k, attrs[k])
+  if (parent) parent.appendChild(n)
+  return n
+}
+
+const pos = (id) => {
+  if (id === 'bank') return BANK
+  const d = state.devices.find(d => d.id === id)
+  return { x: d.x, y: d.y }
+}
+
+// ---- mesh structure (built once, then only attributes change so animations aren't wiped) ----
+
+function buildMesh(devices, edges) {
+  const byId = Object.fromEntries(devices.map(d => [d.id, d]))
+  const edgeLayer = $('edges'), nodeLayer = $('nodes')
+  for (const d of devices) {
+    el('line', { class: 'uplink', id: `up-${d.id}`, x1: d.x, y1: d.y - 30, x2: BANK.x, y2: BANK.y }, edgeLayer)
+  }
+  for (const e of edges) {
+    const a = byId[e.a], b = byId[e.b]
+    el('line', { class: 'edge', id: `edge-${e.a}-${e.b}`, x1: a.x, y1: a.y, x2: b.x, y2: b.y }, edgeLayer)
+  }
+  for (const d of devices) {
+    const g = el('g', { class: 'node', 'data-id': d.id }, nodeLayer)
+    el('title', {}, g).textContent = `${d.owner} — click to toggle mobile data`
+    const body = el('g', { class: 'pulse', id: `body-${d.id}` }, g)
+    el('circle', { class: 'body', cx: d.x, cy: d.y, r: 30, opacity: .92 }, body)
+    el('text', { x: d.x, y: d.y + 5, 'text-anchor': 'middle', fill: '#fff', 'font-size': 13, 'font-weight': 600, id: `net-${d.id}` }, body)
+    const badge = el('g', { class: 'pulse', id: `badge-${d.id}` }, g)
+    el('circle', { cx: d.x + 24, cy: d.y - 24, r: 12, fill: 'var(--accent)' }, badge)
+    el('text', { x: d.x + 24, y: d.y - 20, 'text-anchor': 'middle', fill: '#fff', 'font-size': 12, 'font-weight': 700 }, badge)
+    el('text', { class: 'node-label', x: d.x, y: d.y + 50 }, g).textContent = d.owner
+    el('text', { class: 'node-sub', id: `held-${d.id}`, x: d.x, y: d.y + 66 }, g)
+  }
+  built = true
+}
+
+function updateMesh(devices) {
+  for (const d of devices) {
+    const body = $(`body-${d.id}`)
+    body.querySelector('circle').setAttribute('fill', d.hasInternet ? 'var(--node-on)' : 'var(--node-off)')
+    $(`net-${d.id}`).textContent = d.hasInternet ? '4G' : 'off'
+    $(`up-${d.id}`).classList.toggle('on', d.hasInternet)
+    $(`held-${d.id}`).textContent = d.heldPacketIds.join(', ')
+
+    const badge = $(`badge-${d.id}`)
+    const n = d.heldPacketIds.length
+    const prev = Number(badge.dataset.n || 0)
+    badge.querySelector('text').textContent = n
+    badge.dataset.n = n
+    if (n && !prev) animate(badge, { scale: [0, 1], opacity: [0, 1] }, { type: 'spring', bounce: 0.4, visualDuration: dur(0.3) })
+    else if (!n && prev) animate(badge, { scale: 0, opacity: 0 }, { duration: dur(0.15) })
+    else if (n !== prev) animate(badge, { scale: [1, 1.3, 1] }, { duration: dur(0.3) })
+    else badge.style.opacity = n ? 1 : 0
+  }
+}
+
+// ---- effects ----
+
+async function travel(from, to, color, { delay = 0, duration = 0.6, radius = 7 } = {}) {
+  const dot = el('circle', { class: 'pulse', cx: from.x, cy: from.y, r: radius, fill: color, stroke: 'var(--panel)', 'stroke-width': 2, opacity: 0 }, $('fx'))
+  await animate(0, 1, {
+    delay: dur(delay), duration: dur(duration), ease: 'easeInOut',
+    onUpdate: t => {
+      dot.setAttribute('cx', from.x + (to.x - from.x) * t)
+      dot.setAttribute('cy', from.y + (to.y - from.y) * t)
+      dot.setAttribute('opacity', Math.min(1, t * 6))
+    }
+  })
+  dot.setAttribute('opacity', 1)
+  return dot
+}
+
+function pulse(target, scale = 1.15) {
+  return animate(target, { scale: [1, scale, 1] }, { duration: dur(0.35), ease: 'easeOut' })
+}
+
+function shake(target) {
+  return animate(target, { x: [0, -9, 9, -6, 6, -3, 0] }, { duration: dur(0.45) })
+}
+
+function ripple(at, color) {
+  for (let i = 0; i < 3; i++) {
+    const ring = el('circle', { cx: at.x, cy: at.y, r: 30, fill: 'none', stroke: color, 'stroke-width': 2, opacity: 0 }, $('fx'))
+    animate(0, 1, {
+      delay: dur(i * 0.18), duration: dur(0.9), ease: 'easeOut',
+      onUpdate: t => { ring.setAttribute('r', 30 + t * 90); ring.setAttribute('opacity', 0.7 * (1 - t)) }
+    }).then(() => ring.remove())
+  }
+}
+
+function floatLabel(at, text, color) {
+  const label = el('text', { x: at.x, y: at.y, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 700, fill: color }, $('fx'))
+  label.textContent = text
+  animate(label, { y: [0, -26], opacity: [0, 1, 1, 0] }, { duration: dur(1.4), ease: 'easeOut' }).then(() => label.remove())
+}
+
+async function landAtBank(dot, outcome) {
+  const color = outcomeColor(outcome)
+  dot.setAttribute('fill', color)
+  if (outcome === 'SETTLED') {
+    pulse($('bank'), 1.12)
+    floatLabel({ x: BANK.x + 90, y: BANK.y - 20 }, shortOutcome(outcome), color)
+    await animate(dot, { scale: [1, 1.8], opacity: [1, 0] }, { duration: dur(0.35) })
+  } else {
+    if (outcome !== 'DUPLICATE_DROPPED') shake($('bank'))
+    floatLabel({ x: BANK.x - 90, y: BANK.y - 20 }, shortOutcome(outcome), color)
+    await animate(dot, { y: [0, 34], opacity: [1, 0] }, { duration: dur(0.5), ease: 'easeIn' })
+  }
+  dot.remove()
+}
+
+function scramble(target, finalText) {
+  const glyphs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  animate(0, finalText.length, {
+    duration: dur(0.8), ease: 'easeOut',
+    onUpdate: v => {
+      const done = Math.floor(v)
+      let out = finalText.slice(0, done)
+      for (let i = done; i < finalText.length; i++) out += glyphs[(Math.random() * glyphs.length) | 0]
+      target.textContent = out
+    },
+    onComplete: () => { target.textContent = finalText }
+  })
+}
+
+// ---- data panels ----
+
+function renderAccounts(accounts) {
+  const box = $('accounts')
+  if (!box.children.length) {
+    box.innerHTML = accounts.map(a =>
+      `<div id="acct-${esc(a.vpa)}"><span>${esc(a.holderName)}<br><span class="hint mono">${esc(a.vpa)}</span></span><b></b></div>`).join('')
+  }
+  for (const a of accounts) {
+    const row = document.getElementById(`acct-${a.vpa}`)
+    if (!row) continue
+    const out = row.querySelector('b')
+    const next = Number(a.balance)
+    const prev = balances.get(a.vpa)
+    balances.set(a.vpa, next)
+    if (prev === undefined || prev === next) { out.textContent = fmt(next); continue }
+    animate(prev, next, { duration: dur(0.8), ease: 'easeOut', onUpdate: v => { out.textContent = fmt(v) } })
+    const flash = getComputedStyle(document.documentElement).getPropertyValue(next > prev ? '--ok-bg' : '--bad-bg').trim()
+    animate(row, { backgroundColor: [flash, 'rgba(0,0,0,0)'] }, { duration: dur(1.2) })
+  }
+}
+
+function renderLedger(rows) {
+  const body = $('ledger')
+  if (!rows.length) {
+    seenLedger.clear()
+    body.innerHTML = '<tr><td colspan="5" class="hint">Nothing has reached the bank yet.</td></tr>'
+    return
+  }
+  const fresh = []
+  body.innerHTML = rows.map(r => {
+    if (!seenLedger.has(r.id)) fresh.push(r.id)
+    const cls = r.outcome === 'SETTLED' || r.outcome === 'DUPLICATE_DROPPED' ? r.outcome : 'bad'
+    const pay = r.senderVpa ? `${esc(r.senderVpa)} → ${esc(r.receiverVpa)} ₹${esc(r.amount)}` : '<i>unreadable</i>'
+    return `<tr data-id="${r.id}"><td>${time(r.at)}</td><td class="mono">${esc(r.packetId.slice(0, 8))}</td><td>${esc(r.bridgeId)}</td>
+      <td>${pay}</td><td><span class="pill ${cls}">${esc(r.outcome)}</span><div class="hint" style="margin:2px 0 0">${esc(r.message)}</div></td></tr>`
+  }).join('')
+  fresh.forEach(id => seenLedger.add(id))
+  if (!state.animateLedger || !fresh.length) return
+  const newRows = fresh.map(id => body.querySelector(`tr[data-id="${id}"]`)).filter(Boolean).reverse()
+  animate(newRows, { opacity: [0, 1], x: [-12, 0] }, { duration: dur(0.3), delay: stagger(0.06) })
+}
+
+async function refresh() {
+  const s = await fetch('/api/state').then(r => r.json())
+  const animateLedger = state !== null
+  state = s
+  state.animateLedger = animateLedger
+  if (!built) {
+    const vpas = s.accounts.map(a => `<option>${esc(a.vpa)}</option>`).join('')
+    $('senderSel').innerHTML = vpas
+    $('receiverSel').innerHTML = vpas
+    $('receiverSel').value = 'mohan@hdfc'
+    $('deviceSel').innerHTML = s.devices.map(d => `<option value="${esc(d.id)}">${esc(d.owner)}</option>`).join('')
+    buildMesh(s.devices, s.edges)
+  }
+  updateMesh(s.devices)
+  renderAccounts(s.accounts)
+  $('idem').textContent = `Idempotency keys held by bank: ${s.idempotencyKeys}`
+  renderLedger(s.ledger)
+  $('log').innerHTML = s.events.map(e => `<div><b>${esc(e.kind)}</b>${esc(e.message)}</div>`).join('') || '<div class="hint">No events yet.</div>'
+}
+
+async function act(fn) {
+  if (busy) return
+  busy = true
+  document.querySelectorAll('button').forEach(b => b.disabled = true)
+  try { await fn() } catch (e) { toast(e.message, true) }
+  try { await refresh() } catch (e) { toast('Backend unreachable: ' + e.message, true) }
+  document.querySelectorAll('button').forEach(b => b.disabled = false)
+  busy = false
+}
+
+// ---- actions ----
+
+$('send').addEventListener('submit', (ev) => {
+  ev.preventDefault()
+  const data = Object.fromEntries(new FormData(ev.target))
+  act(async () => {
+    const r = await api('/send', { body: JSON.stringify(data) })
+    const box = $('cipher')
+    if (box.hidden) { box.hidden = false; animate(box, { opacity: [0, 1], y: [-6, 0] }, { duration: dur(0.25) }) }
+    scramble($('cipherText'), r.whatStrangersSee)
+    ripple(pos(data.deviceId), 'var(--accent)')
+    pulse($(`body-${data.deviceId}`))
+    toast(`Packet ${r.packetId.slice(0, 8)} sealed (${r.ciphertextBytes} encrypted bytes, ttl ${r.ttl}). Now run a gossip round.`)
+  })
+})
+
+$('gossip').onclick = () => act(async () => {
+  const r = await api('/gossip')
+  if (!r.hops.length) return toast('Nothing new to share — everyone in range already has it.')
+  await Promise.all(r.hops.map((h, i) => {
+    const edge = $(`edge-${h.from}-${h.to}`) || $(`edge-${h.to}-${h.from}`)
+    edge?.classList.add('hot')
+    return (async () => {
+      const dot = await travel(pos(h.from), pos(h.to), 'var(--accent)', { delay: i * 0.08 })
+      edge?.classList.remove('hot')
+      pulse($(`body-${h.to}`), 1.1)
+      await animate(dot, { opacity: 0 }, { duration: dur(0.15) })
+      dot.remove()
+    })()
+  }))
+  toast(`${r.hops.length} Bluetooth hop(s) this round.`)
+})
+
+$('flush').onclick = () => act(async () => {
+  const results = await api('/flush')
+  if (!results.length) return toast('No bridge is carrying anything yet — run a gossip round first.')
+  updateMesh(state.devices.map(d => d.hasInternet ? { ...d, heldPacketIds: [] } : d))
+  await Promise.all(results.map(async res => {
+    const dot = await travel(pos(res.bridgeId), BANK, 'var(--accent)', { duration: 0.7 })
+    await landAtBank(dot, res.outcome)
+  }))
+  const settled = results.filter(x => x.outcome === 'SETTLED').length
+  toast(`${results.length} upload(s) raced to the bank in parallel → ${settled} settled, ${results.length - settled} dropped.`)
+})
+
+async function attack(path, label, color) {
+  const travelling = travel(pos('manoj'), BANK, color, { duration: 0.8, radius: 8 })
+  const [r, dot] = await Promise.all([api(path), travelling])
+  await landAtBank(dot, r.outcome)
+  toast(`${label} → ${r.outcome}`)
+}
+
+$('tamper').onclick = () => act(() => attack('/demo/tamper', 'Tamper', 'var(--bad)'))
+$('replay').onclick = () => act(() => attack('/demo/replay', 'Replay', 'var(--warn)'))
+$('expired').onclick = () => act(() => attack('/demo/expired', 'Stale packet', 'var(--node-off)'))
+$('reset').onclick = () => act(async () => {
+  await api('/reset')
+  $('cipher').hidden = true
+  toast('Reset.')
+})
+
+$('mesh').addEventListener('click', (ev) => {
+  const g = ev.target.closest('g.node')
+  if (!g) return
+  act(async () => {
+    await api(`/devices/${g.dataset.id}/internet`)
+    pulse($(`body-${g.dataset.id}`), 1.2)
+  })
+})
+
+press('button', (btn) => {
+  if (btn.disabled) return
+  animate(btn, { scale: 0.95 }, { type: 'spring', bounce: 0, visualDuration: 0.12 })
+  return () => animate(btn, { scale: 1 }, { type: 'spring', bounce: 0.3, visualDuration: 0.25 })
+})
+
+const WAKING = 'Backend is waking up (free server, can take ~50s) — retrying…'
+refresh().catch(() => toast(WAKING, true))
+setInterval(() => {
+  if (busy) return
+  const wasDown = !state
+  refresh().then(() => { if (wasDown) toast('Backend connected.') }).catch(() => { if (wasDown) toast(WAKING, true) })
+}, 3000)
+</script>
+</body>
+</html>

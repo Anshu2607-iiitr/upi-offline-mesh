@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "",
+  "installCommand": "",
+  "outputDirectory": "src/main/resources/static",
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://upi-offline-mesh.onrender.com/api/:path*" }
+  ]
+}

@@ -1,0 +1,12 @@
+package com.demo.upimesh.model;
+
+public enum Outcome {
+    SETTLED,
+    DUPLICATE_DROPPED,
+    REJECTED_TAMPERED,
+    REJECTED_EXPIRED,
+    REJECTED_BAD_PIN,
+    REJECTED_INSUFFICIENT_FUNDS,
+    REJECTED_UNKNOWN_ACCOUNT,
+    REJECTED_INVALID
+}

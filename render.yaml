@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: upi-offline-mesh
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/state
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
